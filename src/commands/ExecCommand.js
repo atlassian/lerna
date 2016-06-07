@@ -1,8 +1,9 @@
 import ChildProcessUtilities from "../ChildProcessUtilities";
-import ScopedCommand from "../ScopedCommand";
+import Command from "../Command";
+import PackageUtilities from "../PackageUtilities";
 import async from "async";
 
-export default class ExecCommand extends ScopedCommand {
+export default class ExecCommand extends Command {
   initialize(callback) {
     this.command = this.input[0];
     this.args = this.input.slice(1);
@@ -10,6 +11,16 @@ export default class ExecCommand extends ScopedCommand {
     if (!this.command) {
       callback(new Error("You must specify which command to run."));
       return;
+    }
+
+    if (this.flags.scope) {
+      this.logger.info(`Scoping to packages that match '${this.flags.scope}'`);
+      try {
+        this.packages = PackageUtilities.filterPackages(this.packages, this.flags.scope);
+      } catch (err) {
+        callback(err);
+        return;
+      }
     }
 
     callback(null, true);
@@ -22,14 +33,12 @@ export default class ExecCommand extends ScopedCommand {
   }
 
   runCommandInPackage(pkg, callback) {
-    ChildProcessUtilities.spawn(this.command, this.args, { cwd: pkg.location }, (err, stdout) => {
-      if (err) {
+    ChildProcessUtilities.spawn(this.command, this.args, { cwd: pkg.location }, (code) => {
+      if (code) {
         this.logger.error(`Errored while running command '${this.command}' ` +
-                          `with arguments '${this.args.join(" ")}' in '${pkg.name}'`, err);
-      } else {
-        this.logger.info(stdout);
+                          `with arguments '${this.args.join(" ")}' in '${pkg.name}'`);
       }
-      callback(err);
+      callback(code);
     });
   }
 }

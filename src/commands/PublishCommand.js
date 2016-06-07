@@ -127,6 +127,12 @@ export default class PublishCommand extends Command {
   }
 
   getVersionsForUpdates(callback) {
+    if (this.flags.repoVersion) {
+      return callback(null, {
+        version: this.flags.repoVersion
+      });
+    }
+
     // Non-Independent Canary Mode
     if (!this.repository.isIndependent() && this.flags.canary) {
       const version = this.globalVersion + this.getCanaryVersionSuffix();
@@ -172,7 +178,7 @@ export default class PublishCommand extends Command {
   }
 
   getCanaryVersionSuffix() {
-    return "-canary." + GitUtilities.getCurrentSHA().slice(0, 8);
+    return "-alpha." + GitUtilities.getCurrentSHA().slice(0, 8);
   }
 
   promptVersion(packageName, currentVersion, callback) {
@@ -214,9 +220,14 @@ export default class PublishCommand extends Command {
     }).join("\n"));
     this.logger.newLine();
 
-    PromptUtilities.confirm("Are you sure you want to publish the above changes?", confirm => {
-      callback(null, confirm);
-    });
+    if (!this.flags.yes) {
+      PromptUtilities.confirm("Are you sure you want to publish the above changes?", confirm => {
+        callback(null, confirm);
+      });
+    } else {
+      this.logger.info("Assuming confirmation.");
+      callback(null, true);
+    }
   }
 
   updateVersionInLernaJson() {
