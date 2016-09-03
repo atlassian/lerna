@@ -193,51 +193,59 @@ export default class BootstrapCommand extends Command {
     this.progressBar.init(this.filteredPackages.length);
     const actions = [];
     this.filteredPackages.forEach((filteredPackage) => {
-      const packageLocation = path.join(this.repository.packagesLocation, filteredPackage.name);
       // actions to run for this package
       const packageActions = [];
       Object.keys(filteredPackage.allDependencies)
         // filter out external dependencies and incompatible packages
         .filter((dependency) => {
-          const match = find(this.packages, { name: dependency});
-          return match && filteredPackage.hasMatchingDependency(match);
+          const match = this.packageGraph.get(dependency);
+          return match && filteredPackage.hasMatchingDependency(match.package);
         })
         .forEach((dependency) => {
-          // get path to dependency and its package.json
-          const dependencyLocation = path.join(this.repository.packagesLocation, dependency);
+          // get Package of dependency
+          const dependencyPackage = this.packageGraph.get(dependency).package;
+          // get path to dependency and its scope
+          const { location: dependencyLocation } = dependencyPackage;
           const dependencyPackageJsonLocation = path.join(dependencyLocation, "package.json");
           // ignore dependencies without a package.json file
           if (!FileSystemUtilities.existsSync(dependencyPackageJsonLocation)) {
-            this.logger.error(`Unable to find package.json for ${dependency} dependency. Skipping...`);
+            this.logger.error(
+              `Unable to find package.json for ${dependency} dependency of ${filteredPackage.name},  ` +
+              "Skipping..."
+            );
           } else {
-            const installedDepLocation = path.join(filteredPackage.nodeModulesLocation, dependency);
+            // get the destination directory name of the dependency
+            const pkgDependencyLocation = path.join(filteredPackage.nodeModulesLocation, dependencyPackage.name);
             // check if dependency is already installed
-            if (FileSystemUtilities.existsSync(installedDepLocation)) {
-              const isDepSymlink = FileSystemUtilities.isSymlink(installedDepLocation);
+            if (FileSystemUtilities.existsSync(pkgDependencyLocation)) {
+              const isDepSymlink = FileSystemUtilities.isSymlink(pkgDependencyLocation);
               // installed dependency is a symlink pointing to a different location
-              if (isDepSymlink !== dependencyLocation) {
+              if (isDepSymlink !== false && isDepSymlink !== dependencyLocation) {
                 this.logger.warning(
                   `Symlink already exists for ${dependency} dependency of ${filteredPackage.name}, ` +
                   "but links to different location. Replacing with updated symlink..."
                 );
               // installed dependency is not a symlink
-              } else if (!isDepSymlink) {
+              } else if (isDepSymlink === false) {
                 this.logger.warning(
                   `${dependency} is already installed for ${filteredPackage.name}. ` +
                   "Replacing with symlink..."
                 );
                 // remove installed dependency
-                packageActions.push((cb) => FileSystemUtilities.rimraf(installedDepLocation, cb));
+                packageActions.push((cb) => FileSystemUtilities.rimraf(pkgDependencyLocation, cb));
               }
             }
-            // ensure node_modules folder
-            packageActions.push((cb) => FileSystemUtilities.mkdirp(path.join(packageLocation, "node_modules"), cb));
+            // ensure destination path
+            packageActions.push((cb) => FileSystemUtilities.mkdirp(
+              pkgDependencyLocation.split(path.sep).slice(0, -1).join(path.sep), cb
+            ));
             // create package symlink
-            const dependencyLinkLocation = path.join(packageLocation, "node_modules", dependency);
-            packageActions.push((cb) => FileSystemUtilities.symlink(dependencyLocation, dependencyLinkLocation, "dir", cb));
+            packageActions.push((cb) => FileSystemUtilities.symlink(
+              dependencyLocation, pkgDependencyLocation, "dir", cb
+            ));
             const dependencyPackageJson = require(dependencyPackageJsonLocation);
             if (dependencyPackageJson.bin) {
-              const destFolder = path.join(this.repository.packagesLocation, filteredPackage.name, "node_modules");
+              const destFolder = filteredPackage.nodeModulesLocation;
               packageActions.push((cb) => {
                 this.createBinaryLink(dependencyLocation, destFolder, dependency, dependencyPackageJson.bin, cb);
               });
