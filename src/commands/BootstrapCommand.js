@@ -225,6 +225,7 @@ export default class BootstrapCommand extends Command {
                   `Symlink already exists for ${dependency} dependency of ${filteredPackage.name}, ` +
                   "but links to different location. Replacing with updated symlink..."
                 );
+                packageActions.push((cb) => FileSystemUtilities.rimraf(pkgDependencyLocation, cb));
               // installed dependency is not a symlink
               } else if (isDepSymlink === false) {
                 this.logger.warning(
